@@ -40,12 +40,14 @@ dependencies:
   shared_preferences: ^2.2.2
   firebase_auth: ^4.16.0
   google_sign_in: ^6.2.1
+  google_fonts: ^6.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
+  flutter_native_splash: ^2.3.10
 
 flutter:
   uses-material-design: true
@@ -80,3 +82,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_native_splash:
+  color: "#FFFFFF" # Ilova asosiy rangi (Indigo)
+  image: assets/splash.png # Logotip manzili
+  android_12:
+    image: assets/splash.png
+    color: "#FFFFFF"

@@ -55,7 +55,7 @@ class SettingsScreen extends StatelessWidget {
                   BoxShadow(
                     color: isDark
                         ? Colors.black26
-                        : Colors.grey.withOpacity(0.05),
+                        : Colors.grey.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -86,7 +86,7 @@ class SettingsScreen extends StatelessWidget {
                     secondary: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.indigo.withOpacity(0.1),
+                        color: Colors.indigo.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
@@ -133,7 +133,7 @@ class SettingsScreen extends StatelessWidget {
                   BoxShadow(
                     color: isDark
                         ? Colors.black26
-                        : Colors.grey.withOpacity(0.05),
+                        : Colors.grey.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -199,7 +199,7 @@ class SettingsScreen extends StatelessWidget {
                   BoxShadow(
                     color: isDark
                         ? Colors.black26
-                        : Colors.grey.withOpacity(0.05),
+                        : Colors.grey.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -258,7 +258,7 @@ class SettingsScreen extends StatelessWidget {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.indigo.withOpacity(0.1),
+          color: Colors.indigo.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, color: Colors.indigo, size: 22),

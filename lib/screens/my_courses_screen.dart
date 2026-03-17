@@ -1,123 +1,73 @@
-// lib/screens/my_courses_screen.dart
 import 'package:flutter/material.dart';
+
 import '../models/course_model.dart';
+import '../services/auth_service.dart';
+import '../services/course_repository.dart';
 import 'course_detail_screen.dart';
 
-class MyCoursesScreen extends StatefulWidget {
+class MyCoursesScreen extends StatelessWidget {
   const MyCoursesScreen({super.key});
 
   @override
-  State<MyCoursesScreen> createState() => _MyCoursesScreenState();
-}
-
-class _MyCoursesScreenState extends State<MyCoursesScreen> {
-  
-  // Kursni o'chirish
-  void _deleteCourse(Course course, bool isCompletedTab) {
-    setState(() {
-      if (isCompletedTab) {
-        myCompletedCourses.remove(course);
-      } else {
-        myEnrolledCourses.remove(course);
-      }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text("Kurs ro'yxatdan o'chirildi"),
-        backgroundColor: Colors.red.shade400,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  // Kursni tugatish
-  void _completeCourse(Course course) {
-    setState(() {
-      myEnrolledCourses.remove(course);
-      myCompletedCourses.add(course);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Tabriklaymiz! Kurs tugatildi 🎉"),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? Colors.white : Colors.black;
+    final user = AuthService.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text("Tizimga kirgandan keyin kurslar ko'rinadi")),
+      );
+    }
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          elevation: 0,
-          backgroundColor: Colors.transparent, // Orqa fon shaffof (scaffold rangi)
-          title: Text(
-            "Mening Darslarim", 
-            style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 22)
-          ),
-          centerTitle: false,
+          title: const Text("Mening kurslarim"),
           bottom: TabBar(
-            labelColor: Colors.indigo,
-            unselectedLabelColor: isDark ? Colors.grey[500] : Colors.grey,
-            indicatorColor: Colors.indigo,
-            indicatorSize: TabBarIndicatorSize.label,
-            indicatorWeight: 3,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             tabs: const [
               Tab(text: "Jarayonda"),
-              Tab(text: "Tugatilgan"),
+              Tab(text: "Yakunlangan"),
             ],
+            indicatorSize: TabBarIndicatorSize.tab,
           ),
         ),
-        body: TabBarView(
-          children: [
-            // 1-TAB: JARAYONDA
-            _buildList(myEnrolledCourses, isCompletedTab: false),
-            
-            // 2-TAB: TUGATILGAN
-            _buildList(myCompletedCourses, isCompletedTab: true),
-          ],
+        body: StreamBuilder<List<Course>>(
+          stream: CourseRepository.instance.streamEnrolledCourses(user.uid),
+          builder: (context, snapshot) {
+            final courses = snapshot.data ?? const <Course>[];
+            return TabBarView(
+              children: [
+                _CoursesTab(
+                  courses: courses
+                      .where((course) => !course.isCompleted)
+                      .toList(),
+                  isCompletedTab: false,
+                ),
+                _CoursesTab(
+                  courses: courses
+                      .where((course) => course.isCompleted)
+                      .toList(),
+                  isCompletedTab: true,
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
+}
 
-  Widget _buildList(List<Course> courses, {required bool isCompletedTab}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? Colors.white : Colors.black87;
-    final subTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
+class _CoursesTab extends StatelessWidget {
+  final List<Course> courses;
+  final bool isCompletedTab;
 
-    if (courses.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isCompletedTab ? Icons.verified_outlined : Icons.video_library_outlined, 
-              size: 80, 
-              color: isDark ? Colors.grey[800] : Colors.grey[300]
-            ),
-            const SizedBox(height: 15),
-            Text(
-              isCompletedTab ? "Hali hech qaysi kurs tugatilmagan" : "Sizda faol kurslar yo'q",
-              style: TextStyle(color: subTextColor, fontSize: 16),
-            ),
-            if (!isCompletedTab)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Text(
-                  "Bosh sahifadan kurs tanlang",
-                  style: TextStyle(color: Colors.indigo.withOpacity(0.7), fontSize: 14),
-                ),
-              )
-          ],
-        ),
-      );
+  const _CoursesTab({required this.courses, required this.isCompletedTab});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = AuthService.instance.currentUser;
+    if (courses.isEmpty || user == null) {
+      return _EmptyState(isCompleted: isCompletedTab);
     }
 
     return ListView.builder(
@@ -125,118 +75,153 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
       itemCount: courses.length,
       itemBuilder: (context, index) {
         final course = courses[index];
-        
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context, 
-              MaterialPageRoute(builder: (context) => CourseDetailScreen(course: course))
-            );
-          },
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor, // Dinamik rang
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? Colors.grey[800]! : Colors.transparent),
-              boxShadow: [
-                BoxShadow(
-                  color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.08), 
-                  blurRadius: 10,
-                  offset: const Offset(0, 4)
-                )
-              ],
-            ),
-            child: Row(
-              children: [
-                // --- 1. Rasm ---
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(course.image, width: 85, height: 85, fit: BoxFit.cover),
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.network(
+                  course.image,
+                  width: 92,
+                  height: 92,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: 92,
+                      height: 92,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.12),
+                      child: Icon(
+                        Icons.school_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    );
+                  },
                 ),
-                const SizedBox(width: 15),
-                
-                // --- 2. Matnlar ---
-                Expanded(
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            CourseDetailScreen(course: course),
+                      ),
+                    );
+                  },
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.indigo.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4)
-                        ),
-                        child: Text(
-                          course.category, 
-                          style: const TextStyle(color: Colors.indigo, fontSize: 10, fontWeight: FontWeight.bold)
+                      Text(
+                        course.category,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
-                        course.title, 
-                        maxLines: 2, 
-                        overflow: TextOverflow.ellipsis, 
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: textColor)
+                        course.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 10),
-                      
-                      // Progress Bar yoki Status
-                      if (!isCompletedTab) 
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: 0.4, 
-                                color: Colors.indigo, 
-                                // Tungi rejimda progress orqa foni qorayadi
-                                backgroundColor: isDark ? Colors.grey[700] : Colors.grey[200], 
-                                minHeight: 6
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text("40% tugatildi", style: TextStyle(fontSize: 10, color: subTextColor))
-                          ],
-                        )
-                      else 
-                        Row(
-                          children: [
-                            const Icon(Icons.check_circle, color: Colors.green, size: 14),
-                            const SizedBox(width: 4),
-                            Text("Sertifikat olindi", style: TextStyle(color: Colors.green.shade600, fontSize: 12, fontWeight: FontWeight.bold)),
-                          ],
-                        )
+                      LinearProgressIndicator(
+                        value: course.progress,
+                        minHeight: 7,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        course.isCompleted
+                            ? "Kurs to'liq yakunlangan"
+                            : "${course.progressLabel} tugatildi",
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ],
                   ),
                 ),
-
-                // --- 3. Boshqaruv Tugmalari ---
-                Column(
-                  children: [
-                    // O'chirish
+              ),
+              const SizedBox(width: 10),
+              Column(
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      CourseRepository.instance.removeEnrollment(
+                        userId: user.uid,
+                        courseId: course.id!,
+                      );
+                    },
+                    icon: const Icon(Icons.delete_outline_rounded),
+                  ),
+                  if (!course.isCompleted)
                     IconButton(
-                      icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 22),
-                      tooltip: "O'chirish",
-                      onPressed: () => _deleteCourse(course, isCompletedTab),
+                      onPressed: () {
+                        CourseRepository.instance.completeCourse(
+                          userId: user.uid,
+                          courseId: course.id!,
+                        );
+                      },
+                      icon: const Icon(Icons.check_circle_outline_rounded),
                     ),
-                    
-                    // Tugatish (Faqat jarayonda bo'lsa)
-                    if (!isCompletedTab)
-                      IconButton(
-                        icon: const Icon(Icons.check_circle_outline, color: Colors.green, size: 22),
-                        tooltip: "Tugatdim",
-                        onPressed: () => _completeCourse(course),
-                      ),
-                  ],
-                )
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         );
       },
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final bool isCompleted;
+
+  const _EmptyState({required this.isCompleted});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isCompleted
+                  ? Icons.workspace_premium_outlined
+                  : Icons.play_circle_outline_rounded,
+              size: 54,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              isCompleted
+                  ? "Hali yakunlangan kurs yo'q"
+                  : "Hozircha faol kurs yo'q",
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isCompleted
+                  ? "Kurs tugatilganda bu yerda ko'rinadi."
+                  : "Home bo'limidan kurs tanlab o'qishni boshlang.",
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

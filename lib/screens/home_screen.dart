@@ -1,16 +1,19 @@
-// lib/screens/home_screen.dart
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../models/course_model.dart';
-import '../components/section_header.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../components/category_selector.dart';
 import '../components/course_cards.dart';
+import '../components/section_header.dart';
 import '../main.dart';
-import 'profile_screen.dart';
-import 'my_courses_screen.dart';
+import '../models/course_model.dart';
+import '../services/auth_service.dart';
+import '../services/course_repository.dart';
+import '../services/user_repository.dart';
+import '../theme/app_colors.dart';
 import 'add_course_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'admin_users_screen.dart';
+import 'my_courses_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,109 +25,128 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  // Sahifalar ro'yxati
-  final List<Widget> _pages = [
-    const HomeContent(),         // 0: Asosiy
-    const MyCoursesScreen(),     // 1: Darslarim
-    const Center(child: Text("Chat sahifasi (Tez orada)")), // 2: Chat
-    const ProfileScreen(),       // 3: Profil
-  ];
-
   @override
   void initState() {
     super.initState();
-    _checkAdminRole(); // Ilova ochilishi bilan tekshiramiz
+    _syncUserRole();
   }
 
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
-  Future<void> _checkAdminRole() async {
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user != null) {
-      // Bazadan shu odamni qidiramiz
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      // Agar u "users" ro'yxatida bo'lsa va roli "admin" bo'lsa
-      if (userDoc.exists && userDoc.data()?['role'] == 'admin') {
-        adminModeNotifier.value = true; // Admin rejimini yoqamiz!
-      } else {
-        adminModeNotifier.value = false; // Aks holda o'chiramiz
-      }
+  Future<void> _syncUserRole() async {
+    final user = AuthService.instance.currentUser;
+    if (user == null) {
+      return;
     }
+
+    final role = await UserRepository.instance.fetchUserRole(user.uid);
+    userRoleNotifier.value = role;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('userRole', role);
+
+    final canManage = role == 'admin' || role == 'superadmin';
+    adminModeNotifier.value = canManage;
+    await prefs.setBool('isAdmin', canManage);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Tungi rejimni aniqlash
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pages = [
+      const HomeContent(),
+      const MyCoursesScreen(),
+      const LearningLabScreen(),
+      const ProfileScreen(),
+    ];
+    final theme = Theme.of(context);
 
     return Scaffold(
-      // Body qismi (Scaffold background main.dart dan keladi)
-      body: _pages[_selectedIndex],
+      body: pages[_selectedIndex],
+      floatingActionButton: ValueListenableBuilder<String>(
+        valueListenable: userRoleNotifier,
+        builder: (context, role, child) {
+          if (role != 'admin' && role != 'superadmin' && role != 'teacher') {
+            return const SizedBox.shrink();
+          }
 
-      floatingActionButton: ValueListenableBuilder<bool>(
-        valueListenable: adminModeNotifier, // Pultni eshitamiz
-        builder: (context, isAdmin, child) {
-          // Agar Admin bo'lmasa -> Tugma yo'q (null)
-          if (!isAdmin) return const SizedBox(); 
-          
-          // Agar Admin bo'lsa -> (+) tugmasi chiqadi
-          return FloatingActionButton(
-            backgroundColor: Colors.orange,
-            child: const Icon(Icons.add, color: Colors.white),
-            onPressed: () {
-               Navigator.push(context, MaterialPageRoute(builder: (context) => const AddCourseScreen()));
-            },
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton.extended(
+                heroTag: 'add-course',
+                backgroundColor: theme.colorScheme.secondary,
+                foregroundColor: AppColors.premiumNavy,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text("Kurs"),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AddCourseScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              if (role == 'admin' || role == 'superadmin')
+                FloatingActionButton.extended(
+                  heroTag: 'manage-users',
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                  label: const Text("Users"),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AdminUsersScreen(),
+                      ),
+                    );
+                  },
+                ),
+            ],
           );
         },
       ),
-
-      // --- PASTKI MENYU (Professional Dizayn) ---
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          boxShadow: [
-            BoxShadow(
-              color: isDark ? Colors.black45 : Colors.grey.withOpacity(0.15),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) {
+                setState(() => _selectedIndex = index);
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home_rounded),
+                  label: 'Home',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.play_lesson_outlined),
+                  selectedIcon: Icon(Icons.play_lesson_rounded),
+                  label: 'Courses',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.auto_awesome_outlined),
+                  selectedIcon: Icon(Icons.auto_awesome_rounded),
+                  label: 'Lab',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline_rounded),
+                  selectedIcon: Icon(Icons.person_rounded),
+                  label: 'Profile',
+                ),
+              ],
             ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          backgroundColor: Colors.transparent, // Konteyner rangi ishlaydi
-          elevation: 0, // Soyani konteynerga berdik
-          
-          selectedItemColor: Colors.indigo,
-          unselectedItemColor: Colors.grey,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          showUnselectedLabels: true,
-          type: BottomNavigationBarType.fixed,
-          
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Bosh sahifa"),
-            BottomNavigationBarItem(icon: Icon(Icons.play_circle_fill), label: "Darslarim"),
-            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble), label: "Chat"),
-            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-// --- ASOSIY KONTENT (HOME) ---
-// lib/screens/home_screen.dart (HomeContent qismi)
 class HomeContent extends StatefulWidget {
   const HomeContent({super.key});
 
@@ -133,161 +155,605 @@ class HomeContent extends StatefulWidget {
 }
 
 class _HomeContentState extends State<HomeContent> {
-  String _searchQuery = "";
-  String _selectedCategory = "Barchasi";
+  String _searchQuery = '';
+  String _selectedCategory = 'Barchasi';
 
   @override
   Widget build(BuildContext context) {
-    // 1. FIREBASE MA'LUMOTLARINI TAYYORLASH
-    final user = FirebaseAuth.instance.currentUser;
-    final String displayName = user?.displayName ?? "Foydalanuvchi";
-    final String? photoUrl = user?.photoURL;
-    final String email = user?.email ?? "";
+    final user = AuthService.instance.currentUser;
+    final displayName =
+        user?.displayName ?? user?.email?.split('@').first ?? 'Talaba';
+    final photoUrl = user?.photoURL;
+    final theme = Theme.of(context);
 
-    // Ism bo'lmasa, emailni kesib olamiz
-    final String displayNameFinal = (displayName == "Foydalanuvchi" && email.isNotEmpty)
-        ? email.split('@')[0]
-        : displayName;
+    if (user == null) {
+      return const SizedBox.shrink();
+    }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? Colors.white : Colors.black;
-    final secondaryTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    return StreamBuilder<List<Course>>(
+      stream: CourseRepository.instance.streamCourses(),
+      builder: (context, coursesSnapshot) {
+        final allCourses = coursesSnapshot.data ?? const <Course>[];
+        final categories = _buildCategories(allCourses);
 
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- HEADER QISMI (YANGILANDI) ---
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-              child: Row(
+        if (!categories.contains(_selectedCategory)) {
+          _selectedCategory = 'Barchasi';
+        }
+
+        final filteredCourses = allCourses.where((course) {
+          final matchesSearch = course.title.toLowerCase().contains(
+            _searchQuery.toLowerCase(),
+          );
+          final matchesCategory =
+              _selectedCategory == 'Barchasi' ||
+              course.category == _selectedCategory;
+          return matchesSearch && matchesCategory;
+        }).toList();
+
+        final featuredCourses =
+            (filteredCourses.where((course) {
+                    return course.isFeatured || course.numericRating >= 4.8;
+                  }).toList()
+                  ..sort((a, b) => b.numericRating.compareTo(a.numericRating)))
+                .take(5)
+                .toList();
+
+        return StreamBuilder<List<Course>>(
+          stream: CourseRepository.instance.streamEnrolledCourses(user.uid),
+          builder: (context, enrolledSnapshot) {
+            final enrolledCourses = enrolledSnapshot.data ?? const <Course>[];
+            final continueCourses = enrolledCourses.where((course) {
+              return !course.isCompleted;
+            }).toList();
+
+            return RefreshIndicator(
+              onRefresh: _refreshRole,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.only(bottom: 120),
                 children: [
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen()));
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.indigo, width: 2)
-                      ),
-                      child: CircleAvatar(
-                        radius: 24,
-                        // --- 2. RASM O'ZGARDI ---
-                        // Agar Google rasm bo'lsa o'shani, bo'lmasa eskisini qo'yamiz
-                        backgroundImage: photoUrl != null
-                            ? NetworkImage(photoUrl)
-                            : const NetworkImage("https://picsum.photos/id/64/200/200"),
-                      ),
+                  _buildHero(
+                    context,
+                    displayName: displayName,
+                    photoUrl: photoUrl,
+                    courseCount: allCourses.length,
+                    enrolledCount: enrolledCourses.length,
+                  ),
+                  Transform.translate(
+                    offset: const Offset(0, -24),
+                    child: _SearchPanel(
+                      query: _searchQuery,
+                      onChanged: (value) {
+                        setState(() => _searchQuery = value);
+                      },
                     ),
                   ),
-                  const SizedBox(width: 15),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Xush kelibsiz, 👋", style: TextStyle(color: secondaryTextColor, fontSize: 14)),
-                      // --- 3. ISM O'ZGARDI ---
-                      Text(
-                          displayNameFinal, // "Talaba" o'rniga haqiqiy ism
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)
+                  const SizedBox(height: 2),
+                  SectionHeader(
+                    title: "Yo'nalishlar",
+                    subtitle: "Sizga mos toifani bir tegishda filtrlash",
+                  ),
+                  CategorySelector(
+                    selectedCategory: _selectedCategory,
+                    onCategorySelected: (category) {
+                      setState(() => _selectedCategory = category);
+                    },
+                    categories: categories,
+                  ),
+                  const SizedBox(height: 18),
+                  if (continueCourses.isNotEmpty) ...[
+                    SectionHeader(
+                      title: "Davom ettiring",
+                      subtitle: "Oxirgi boshlangan kurslar shu yerda",
+                    ),
+                    SizedBox(
+                      height: 168,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: continueCourses.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(width: 12),
+                        itemBuilder: (context, index) {
+                          return _ContinueLearningCard(
+                            course: continueCourses[index],
+                          );
+                        },
                       ),
-                    ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  SectionHeader(
+                    title: "Featured tracks",
+                    subtitle: "Premium ko'rinishdagi eng kuchli kurslar",
+                  ),
+                  if (coursesSnapshot.connectionState ==
+                          ConnectionState.waiting &&
+                      allCourses.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (filteredCourses.isEmpty)
+                    _EmptyCoursesState(query: _searchQuery)
+                  else ...[
+                    SizedBox(
+                      height: 345,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: featuredCourses.isEmpty
+                            ? filteredCourses.take(5).length
+                            : featuredCourses.length,
+                        itemBuilder: (context, index) {
+                          final source = featuredCourses.isEmpty
+                              ? filteredCourses[index]
+                              : featuredCourses[index];
+                          return CourseCardVertical(course: source);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            theme.colorScheme.secondary.withValues(alpha: 0.18),
+                            theme.colorScheme.primary.withValues(alpha: 0.12),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.workspace_premium_rounded,
+                            color: AppColors.premiumNavy,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              "Premium oqim: kurslar saqlanadi, progress yuritiladi, keyin backendga migratsiya qilish oson bo'ladi.",
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.premiumNavy,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SectionHeader(
+                      title: "Barcha kurslar",
+                      subtitle:
+                          "${filteredCourses.length} ta kurs topildi, saralangan ro'yxat",
+                    ),
+                    ...filteredCourses.map(
+                      (course) => CourseCardHorizontal(course: course),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _refreshRole() => _refreshRoleData();
+
+  Future<void> _refreshRoleData() async {
+    final user = AuthService.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final role = await UserRepository.instance.fetchUserRole(user.uid);
+    userRoleNotifier.value = role;
+  }
+
+  List<String> _buildCategories(List<Course> courses) {
+    final categories = {
+      'Barchasi',
+      ...courses
+          .map((course) => course.category)
+          .where((item) => item.isNotEmpty),
+    };
+    return categories.toList();
+  }
+
+  Widget _buildHero(
+    BuildContext context, {
+    required String displayName,
+    required String? photoUrl,
+    required int courseCount,
+    required int enrolledCount,
+  }) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+      decoration: const BoxDecoration(gradient: AppColors.heroGradient),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.white.withValues(alpha: 0.18),
+                backgroundImage: photoUrl != null
+                    ? NetworkImage(photoUrl)
+                    : null,
+                child: photoUrl == null
+                    ? const Icon(Icons.person_rounded, color: Colors.white)
+                    : null,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Xush kelibsiz",
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.78),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      displayName,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.notifications_none_rounded,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 26),
+          Text(
+            "Learning system qayta yig'ildi: premium UI, yaxshiroq oqim, service layer tayyor.",
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: Colors.white.withValues(alpha: 0.88),
+            ),
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: _HeroStat(
+                  label: "Katalog",
+                  value: '$courseCount+',
+                  icon: Icons.library_books_outlined,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _HeroStat(
+                  label: "Boshlangan",
+                  value: '$enrolledCount',
+                  icon: Icons.play_circle_outline_rounded,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: _HeroStat(
+                  label: "Format",
+                  value: "HD",
+                  icon: Icons.high_quality_rounded,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LearningLabScreen extends StatelessWidget {
+  const LearningLabScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = const [
+      (
+        Icons.timeline_rounded,
+        'Roadmap',
+        'Har bir kurs uchun aniq yo\'l xarita va natija bosqichlari.',
+      ),
+      (
+        Icons.groups_2_outlined,
+        'Mentor rooms',
+        'Realtime community yoki backend chat uchun tayyor joy.',
+      ),
+      (
+        Icons.credit_score_rounded,
+        'Monetization',
+        'Premium paket, subscription va payment integratsiya uchun baza.',
+      ),
+    ];
+
+    return Scaffold(
+      appBar: AppBar(title: const Text("Learning Lab")),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0A2925), Color(0xFF116E66)],
+              ),
+              borderRadius: BorderRadius.circular(32),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Keyingi bosqich",
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.76),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Firebase qolsin. Endi product depth qo'shish va premium monetization qatlamini ochish kerak.",
+                  style: Theme.of(
+                    context,
+                  ).textTheme.headlineMedium?.copyWith(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          ...cards.map((card) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(
+                      card.$1,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          card.$2,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          card.$3,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
 
-            // --- QIDIRUV ---
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 15),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: isDark ? Colors.grey[800]! : Colors.transparent),
-                boxShadow: [BoxShadow(color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1), blurRadius: 10)],
-              ),
-              child: TextField(
-                style: TextStyle(color: textColor),
-                onChanged: (value) => setState(() => _searchQuery = value),
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  icon: Icon(Icons.search, color: secondaryTextColor),
-                  hintText: "Kurslarni qidirish...",
-                  hintStyle: TextStyle(color: secondaryTextColor),
+class _SearchPanel extends StatelessWidget {
+  final String query;
+  final ValueChanged<String> onChanged;
+
+  const _SearchPanel({required this.query, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 26,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: TextField(
+        onChanged: onChanged,
+        decoration: const InputDecoration(
+          hintText: "Masalan: Flutter, English, Design",
+          prefixIcon: Icon(Icons.search_rounded),
+          suffixIcon: Icon(Icons.tune_rounded),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _HeroStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: Colors.white, size: 20),
+          const SizedBox(height: 16),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.74),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContinueLearningCard extends StatelessWidget {
+  final Course course;
+
+  const _ContinueLearningCard({required this.course});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: 280,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: theme.colorScheme.primary,
                 ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  course.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            "${course.progressLabel} yakunlandi",
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w800,
             ),
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: course.progress,
+            minHeight: 8,
+            borderRadius: BorderRadius.circular(999),
+            backgroundColor: theme.colorScheme.outline.withValues(alpha: 0.18),
+            color: theme.colorScheme.primary,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-            // --- KATEGORIYALAR ---
-            CategorySelector(
-              selectedCategory: _selectedCategory,
-              onCategorySelected: (category) => setState(() => _selectedCategory = category),
-            ),
-            const SizedBox(height: 20),
+class _EmptyCoursesState extends StatelessWidget {
+  final String query;
 
-            // --- FIREBASE KURSLAR ---
-            SectionHeader(title: "Barcha Kurslar (Online) 🌐", onSeeAll: () {}),
+  const _EmptyCoursesState({required this.query});
 
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('courses').snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return const Center(child: Text("Xatolik yuz berdi!"));
-                }
-
-                var docs = snapshot.data!.docs;
-
-                var filteredDocs = docs.where((doc) {
-                  var data = doc.data() as Map<String, dynamic>;
-                  String title = (data['title'] ?? "").toString().toLowerCase();
-                  String category = (data['category'] ?? "").toString();
-
-                  bool matchesSearch = title.contains(_searchQuery.toLowerCase());
-                  bool matchesCategory = _selectedCategory == "Barchasi" || category == _selectedCategory;
-
-                  return matchesSearch && matchesCategory;
-                }).toList();
-
-                if (filteredDocs.isEmpty) {
-                  return const Center(child: Text("Hozircha kurslar yo'q"));
-                }
-
-                return SizedBox(
-                  height: 280,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: filteredDocs.length,
-                    itemBuilder: (context, index) {
-                      var data = filteredDocs[index].data() as Map<String, dynamic>;
-
-                      Course course = Course(
-                        id: filteredDocs[index].id,
-                        title: data['title'] ?? "Nomsiz",
-                        category: data['category'] ?? "General",
-                        image: data['image'] ?? "https://picsum.photos/200/300",
-                        price: data['price'] ?? "Bepul",
-                        rating: data['rating'] ?? "0.0",
-                        instructor: data['instructor'] ?? "Admin",
-                        // Video URL ni olishni ham qo'shdik:
-                        videoUrl: data['videoUrl'] ?? "https://www.youtube.com/watch?v=fq4N0hgOWzU",
-                      );
-
-                      return CourseCardVertical(course: course);
-                    },
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.search_off_rounded, size: 56),
+          const SizedBox(height: 14),
+          Text(
+            query.isEmpty ? "Kurslar topilmadi" : "'$query' uchun natija yo'q",
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Qidiruvni o'zgartiring yoki boshqa kategoriya tanlang.",
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
       ),
     );
   }

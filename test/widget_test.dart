@@ -1,30 +1,23 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:project/main.dart';
+import 'package:project/models/course_model.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const EducationApp());
+  test('course model parses premium fields safely', () {
+    final course = Course.fromMap({
+      'title': 'Flutter Pro',
+      'instructor': 'Mentor',
+      'rating': 4.9,
+      'price': '120\$',
+      'lessonsCount': '12',
+      'studentsCount': 320,
+      'progress': 0.42,
+      'isFeatured': true,
+    }, id: 'course-1');
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(course.id, 'course-1');
+    expect(course.lessonsCount, 12);
+    expect(course.studentsCount, 320);
+    expect(course.progressLabel, '42%');
+    expect(course.isFeatured, isTrue);
   });
 }

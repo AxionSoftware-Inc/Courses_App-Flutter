@@ -1,27 +1,24 @@
-// lib/main.dart
-import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'screens/home_screen.dart';
 
-// 1. MAVZU PULTI (Theme)
+import 'screens/auth_gate.dart';
+import 'theme/app_theme.dart';
+
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
-
-// 2. ADMIN PULTI (YANGI QO'SHILDI) <--- XATO SHU YERDA EDI
 final ValueNotifier<bool> adminModeNotifier = ValueNotifier(false);
+final ValueNotifier<String> userRoleNotifier = ValueNotifier('user');
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
   final prefs = await SharedPreferences.getInstance();
-  final isDark = prefs.getBool('isDark') ?? false; // Agar yo'q bo'lsa false (kunduzgi)
+  final isDark = prefs.getBool('isDark') ?? false;
   themeNotifier.value = isDark ? ThemeMode.dark : ThemeMode.light;
-  
-  // Admin rejimini ham eslab qolsin desangiz:
-  final isAdmin = prefs.getBool('isAdmin') ?? false;
-  adminModeNotifier.value = isAdmin;
-  
+  adminModeNotifier.value = prefs.getBool('isAdmin') ?? false;
+  userRoleNotifier.value = prefs.getString('userRole') ?? 'user';
+
   runApp(const MyApp());
 }
 
@@ -35,34 +32,11 @@ class MyApp extends StatelessWidget {
       builder: (context, currentMode, child) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: 'Edu App',
-          theme: ThemeData(
-            brightness: Brightness.light,
-            primarySwatch: Colors.indigo,
-            scaffoldBackgroundColor: const Color(0xFFF5F9FF),
-            useMaterial3: true,
-            cardColor: Colors.white,
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFFF5F9FF),
-              iconTheme: IconThemeData(color: Colors.black),
-              titleTextStyle: TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-          ),
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            primarySwatch: Colors.indigo,
-            scaffoldBackgroundColor: const Color(0xFF121212),
-            useMaterial3: true,
-            cardColor: const Color(0xFF1E1E1E),
-            dividerColor: Colors.grey[800],
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF121212),
-              iconTheme: IconThemeData(color: Colors.white),
-              titleTextStyle: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-          ),
+          title: 'Nexa Learn',
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
           themeMode: currentMode,
-          home: const HomeScreen(),
+          home: const AuthGate(),
         );
       },
     );

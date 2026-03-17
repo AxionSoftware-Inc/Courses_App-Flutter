@@ -1,24 +1,48 @@
-// lib/components/section_header.dart
 import 'package:flutter/material.dart';
 
 class SectionHeader extends StatelessWidget {
   final String title;
-  final VoidCallback onSeeAll;
+  final String? subtitle;
+  final VoidCallback? onSeeAll;
 
-  const SectionHeader({super.key, required this.title, required this.onSeeAll});
+  const SectionHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.onSeeAll,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-          InkWell(
-            onTap: onSeeAll,
-            child: const Text("Hammasi", style: TextStyle(color: Colors.indigo, fontWeight: FontWeight.w600)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: theme.textTheme.titleLarge),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 4),
+                  Text(subtitle!, style: theme.textTheme.bodySmall),
+                ],
+              ],
+            ),
           ),
+          if (onSeeAll != null)
+            TextButton(
+              onPressed: onSeeAll,
+              child: Text(
+                "Barchasi",
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
         ],
       ),
     );
